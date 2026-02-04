@@ -1,6 +1,6 @@
-# Cloud Moltbot (Cloudflare + Moltbot)
+# Cloud Claw (Cloudflare + OpenClaw)
 
-**Cloud Moltbot** is a containerized AI assistant solution that combines Cloudflare's powerful infrastructure with Moltbot's intelligent capabilities.
+**Cloud Claw** is a containerized AI assistant solution that combines Cloudflare's powerful infrastructure with OpenClaw's intelligent capabilities.
 
 This is a TypeScript project based on Cloudflare Workers and Cloudflare Containers. It leverages Cloudflare's infrastructure to run and manage containerized workloads.
 
@@ -22,7 +22,7 @@ English | [简体中文](README.zh-CN.md)
 
 ## Quick Start
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/miantiao-me/cloud-moltbot)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/miantiao-me/cloud-claw)
 
 ### Prerequisites
 
@@ -89,31 +89,68 @@ The container has built-in support for S3-compatible storage (such as Cloudflare
 
 To enable data persistence, configure the following environment variables in the container runtime environment:
 
-| Variable                | Description                                      | Required | Default |
-| ----------------------- | ------------------------------------------------ | -------- | ------- |
-| `S3_ENDPOINT`           | S3 API endpoint address                          | Yes      | -       |
-| `S3_BUCKET`             | Bucket name                                      | Yes      | -       |
-| `S3_ACCESS_KEY_ID`      | Access Key ID                                    | Yes      | -       |
-| `S3_SECRET_ACCESS_KEY`  | Access Key Secret                                | Yes      | -       |
-| `S3_REGION`             | Storage region                                   | No       | `auto`  |
-| `S3_PATH_STYLE`         | Whether to use Path Style access                 | No       | `false` |
-| `S3_PREFIX`             | Path prefix within the bucket (subdirectory)     | No       | (root)  |
-| `TIGRISFS_ARGS`         | Additional mount arguments for TigrisFS          | No       | -       |
-| `MOLTBOT_GATEWAY_TOKEN` | Gateway access token (for Web UI authentication) | Yes      | -       |
+| Variable                 | Description                                      | Required | Default |
+| ------------------------ | ------------------------------------------------ | -------- | ------- |
+| `S3_ENDPOINT`            | S3 API endpoint address                          | Yes      | -       |
+| `S3_BUCKET`              | Bucket name                                      | Yes      | -       |
+| `S3_ACCESS_KEY_ID`       | Access Key ID                                    | Yes      | -       |
+| `S3_SECRET_ACCESS_KEY`   | Access Key Secret                                | Yes      | -       |
+| `S3_REGION`              | Storage region                                   | No       | `auto`  |
+| `S3_PATH_STYLE`          | Whether to use Path Style access                 | No       | `false` |
+| `S3_PREFIX`              | Path prefix within the bucket (subdirectory)     | No       | (root)  |
+| `TIGRISFS_ARGS`          | Additional mount arguments for TigrisFS          | No       | -       |
+| `OPENCLAW_GATEWAY_TOKEN` | Gateway access token (for Web UI authentication) | Yes      | -       |
 
 ### How It Works
 
 1. **Mount Point**: On container startup, the S3 bucket is mounted to `/data`.
 2. **Workspace**: The actual workspace is located at `/data/workspace`.
-3. **Moltbot Config**: Moltbot configuration files are stored in `/data/.moltbot` to ensure state persistence.
+3. **OpenClaw Config**: OpenClaw configuration files are stored in `/data/.openclaw` to ensure state persistence.
 4. **Initialization**:
    - If the S3 bucket (or specified prefix path) is empty, the container automatically initializes the preset directory structure.
    - If S3 configuration is missing, the container falls back to non-persistent local directory mode.
 
 ### Web UI Initialization
 
-After the first startup, Moltbot needs to be initialized via the Web UI.
+After the first startup, OpenClaw needs to be initialized via the Web UI.
 Visit the deployed URL (e.g., `https://your-worker.workers.dev`) and follow the on-screen instructions to complete setup.
+
+## Container Lifecycle
+
+By default, the container automatically sleeps after 10 minutes of inactivity to save resources. You can customize this behavior:
+
+### Keep Container Always Running
+
+To prevent the container from sleeping, modify `src/container.ts`:
+
+```typescript
+export class AgentContainer extends Container {
+  sleepAfter = 'never' // Never sleep (default: '10m')
+  // ...
+}
+```
+
+### Activity-Based Keep-Alive (Default)
+
+The current implementation uses smart keep-alive: the container stays active during AI conversations and sleeps during idle periods. This is achieved by calling `renewActivityTimeout()` when chat events are received:
+
+```typescript
+// In watchContainer() - resets the sleep timer on each chat completion
+if (frame.event === 'chat' && frame.payload?.state === 'final') {
+  this.renewActivityTimeout()
+}
+```
+
+### Available Options
+
+| `sleepAfter` Value | Behavior                                       |
+| ------------------ | ---------------------------------------------- |
+| `'never'`          | Container runs indefinitely                    |
+| `'10m'`            | Sleep after 10 minutes of inactivity (default) |
+| `'1h'`             | Sleep after 1 hour of inactivity               |
+| `'30s'`            | Sleep after 30 seconds of inactivity           |
+
+> **Note**: When sleeping, the container state is preserved. It will automatically wake up on the next request, but cold start may take a few seconds.
 
 ## Development Guidelines
 

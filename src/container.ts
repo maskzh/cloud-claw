@@ -33,10 +33,7 @@ export class AgentContainer extends Container {
           const frame = JSON.parse(msg.data as string)
 
           // Keep-alive only on chat events with state 'final'
-          if (
-            frame.event === 'chat' &&
-            frame.payload?.state === 'final'
-          ) {
+          if (frame.event === 'chat' && frame.payload?.state === 'final') {
             console.info('Keep-alive: chat final event')
             this.renewActivityTimeout()
           }
@@ -58,7 +55,7 @@ export class AgentContainer extends Container {
 
       ws.accept()
 
-      const token = env.MOLTBOT_GATEWAY_TOKEN || env.CLAWDBOT_GATEWAY_TOKEN
+      const token = env.OPENCLAW_GATEWAY_TOKEN
       ws.send(
         JSON.stringify({
           type: 'req',
@@ -80,7 +77,9 @@ export class AgentContainer extends Container {
   }
 
   override async onStart(): Promise<void> {
-    await this.watchContainer()
+    if (this.sleepAfter !== 'never') {
+      await this.watchContainer()
+    }
   }
 }
 

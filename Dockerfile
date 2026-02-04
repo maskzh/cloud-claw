@@ -1,4 +1,4 @@
-FROM node:22-bookworm AS moltbot-build
+FROM node:22-bookworm AS openclaw-build
 
 # Install Bun (build script dependency)
 RUN curl -fsSL https://bun.sh/install | bash
@@ -8,14 +8,14 @@ RUN corepack enable
 
 WORKDIR /app
 
-ARG MOLTBOT_GIT_REF=main
+ARG OPENCLAW_GIT_REF=main
 
-RUN git clone --depth 1 --branch "${MOLTBOT_GIT_REF}" https://github.com/moltbot/moltbot.git .
+RUN git clone --depth 1 --branch "${OPENCLAW_GIT_REF}" https://github.com/openclaw/openclaw.git .
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
-ENV MOLTBOT_PREFER_PNPM=1
+ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:install && pnpm ui:build
 
 FROM nikolaik/python-nodejs:python3.12-nodejs22-bookworm
@@ -37,10 +37,10 @@ RUN set -eux; \
 	rm -f /tmp/tigrisfs.deb; \
 	rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-COPY --from=moltbot-build /app /moltbot
+COPY --from=openclaw-build /app /openclaw
 
-RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /moltbot/dist/index.js "$@"' > /usr/local/bin/moltbot \
-	&& chmod +x /usr/local/bin/moltbot
+RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/index.js "$@"' > /usr/local/bin/openclaw \
+	&& chmod +x /usr/local/bin/openclaw
 
 RUN install -m 755 /dev/stdin /entrypoint.sh <<'EOF'
 #!/bin/bash
@@ -48,11 +48,13 @@ set -e
 
 MOUNT_POINT="/data"
 
-export MOLTBOT_STATE_DIR="$MOUNT_POINT/.moltbot"
-export MOLTBOT_WORKSPACE_DIR="$MOUNT_POINT/workspace"
+# State directory corresponds to ~/.openclaw (contains config, credentials, sessions)
+# Workspace defaults to $OPENCLAW_STATE_DIR/workspace per docs
+export OPENCLAW_STATE_DIR="$MOUNT_POINT"
+export OPENCLAW_WORKSPACE_DIR="$MOUNT_POINT/workspace"
 
 setup_workspace() {
-	mkdir -p "$MOLTBOT_STATE_DIR" "$MOLTBOT_WORKSPACE_DIR"
+	mkdir -p "$OPENCLAW_WORKSPACE_DIR"
 }
 
 reset_mountpoint() {
@@ -87,9 +89,9 @@ setup_workspace
 
 cleanup() {
 	echo "[INFO] Shutting down..."
-	if [ -n "$MOLTBOT_PID" ]; then
-		kill -TERM "$MOLTBOT_PID" 2>/dev/null
-		wait "$MOLTBOT_PID" 2>/dev/null
+	if [ -n "$OPENCLAW_PID" ]; then
+		kill -TERM "$OPENCLAW_PID" 2>/dev/null
+		wait "$OPENCLAW_PID" 2>/dev/null
 	fi
 	if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
 		fusermount -u "$MOUNT_POINT" 2>/dev/null || true
@@ -98,14 +100,14 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-if [ -n "$MOLTBOT_GATEWAY_TOKEN" ]; then
+if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
 	echo "[INFO] Using Gateway Token from environment variable"
 else
-	echo "[WARN] MOLTBOT_GATEWAY_TOKEN not set, will be auto-generated"
+	echo "[WARN] OPENCLAW_GATEWAY_TOKEN not set, will be auto-generated"
 fi
 
-if [ ! -f "$MOLTBOT_STATE_DIR/moltbot.json" ]; then
-	cat > "$MOLTBOT_STATE_DIR/moltbot.json" << 'EOFCONFIG'
+if [ ! -f "$OPENCLAW_STATE_DIR/openclaw.json" ]; then
+	cat > "$OPENCLAW_STATE_DIR/openclaw.json" << 'EOFCONFIG'
 {
   "gateway": {
     "mode": "local",
@@ -123,13 +125,13 @@ EOFCONFIG
 	echo "[INFO] Default config file created (local mode + allowInsecureAuth)"
 fi
 
-echo "[INFO] Starting Moltbot Gateway..."
+echo "[INFO] Starting OpenClaw Gateway..."
 echo "[INFO] Visit Web UI for initial setup on first use"
-cd "$MOLTBOT_WORKSPACE_DIR"
+cd "$OPENCLAW_WORKSPACE_DIR"
 
-moltbot gateway --port 6658 --bind lan --allow-unconfigured &
-MOLTBOT_PID=$!
-wait $MOLTBOT_PID
+openclaw gateway --port 6658 --bind lan --allow-unconfigured &
+OPENCLAW_PID=$!
+wait $OPENCLAW_PID
 EOF
 
 WORKDIR /data/workspace

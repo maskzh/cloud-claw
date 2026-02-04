@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cloud-moltbot",
+  "name": "cloud-claw",
   "main": "./src/index.ts",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -20,7 +20,7 @@
   },
   "containers": [
     {
-      "name": "cloud-moltbot-container",
+      "name": "cloud-claw-container",
       "class_name": "AgentContainer",
       "image": "./Dockerfile",
       "instance_type": {

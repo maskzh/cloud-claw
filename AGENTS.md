@@ -1,10 +1,10 @@
 # Agent Development Guidelines
 
-Development guidelines for AI coding agents working on Cloud Moltbot.
+Development guidelines for AI coding agents working on Cloud Claw.
 
 ## Project Overview
 
-Cloud Moltbot is a TypeScript project running on Cloudflare Workers + Containers. It uses Durable Objects with `@cloudflare/containers` to manage containerized AI assistant workloads.
+Cloud Claw is a TypeScript project running on Cloudflare Workers + Containers. It uses Durable Objects with `@cloudflare/containers` to manage containerized AI assistant workloads.
 
 **Tech Stack:** Cloudflare Workers, TypeScript (ES2024), pnpm (v10.28.2)
 
@@ -125,7 +125,7 @@ ws.addEventListener('message', (msg) => { ... })
 | ---------------------------------------------------------------------- | -------------------------------------- |
 | `SERVER_USERNAME`                                                      | Basic auth username                    |
 | `SERVER_PASSWORD`                                                      | Basic auth password (empty = disabled) |
-| `MOLTBOT_GATEWAY_TOKEN`                                                | Gateway access token                   |
+| `OPENCLAW_GATEWAY_TOKEN`                                               | Gateway access token                   |
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | S3 storage                             |
 
 ## Language Requirements
