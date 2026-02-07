@@ -7,7 +7,8 @@
     "dev": "wrangler dev --ip 0.0.0.0",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "lint": "oxfmt && oxlint"
+    "lint": "oxfmt && oxlint",
+    "postinstall": "npm run lint"
   },
   "devDependencies": {
     "@cloudflare/containers": "^0.1.0",

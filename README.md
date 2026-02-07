@@ -1,6 +1,6 @@
 # Cloud Claw (Cloudflare + OpenClaw)
 
-**Cloud Claw** is a containerized AI assistant that runs [OpenClaw](https://github.com/openclaw/openclaw) on Cloudflare Workers + Containers. 
+**Cloud Claw** is a containerized AI assistant that runs [OpenClaw](https://github.com/openclaw/openclaw) on Cloudflare Workers + Containers.
 
 A Worker handles routing and auth, forwards requests to a singleton container running an OpenClaw gateway instance, and proxies Chrome DevTools Protocol (CDP) sessions via Cloudflare Browser Rendering.
 
