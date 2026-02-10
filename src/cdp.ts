@@ -1,6 +1,9 @@
 const CDP_HOST = 'http://cloudflare.browser'
 const MAX_CHUNK = 1048575
 const HEADER = 4
+const MAX_MSG = 100 * 1024 * 1024
+const DEFAULT_KEEP_ALIVE = 120_000
+const MAX_PENDING = 1024
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -23,9 +26,15 @@ function createDecoder() {
   return (chunk: Uint8Array): string | null => {
     pending.push(chunk)
     const first = pending[0]
-    if (!first) return null
+
+    if (first.length < HEADER) return null
 
     const expected = new DataView(first.buffer, first.byteOffset).getUint32(0, true)
+
+    if (expected > MAX_MSG) {
+      pending.length = 0
+      return null
+    }
     let total = -HEADER
 
     for (let i = 0; i < pending.length; i++) {
@@ -60,34 +69,32 @@ export async function proxyCdp(
   proxyOrigin: string,
   token: string,
 ): Promise<Response> {
-  const { pathname } = new URL(request.url)
-  const path = pathname.replace(/^\/cloudflare\.browser\/[^/]+/, '') || '/'
+  const url = new URL(request.url)
+  const path = url.pathname.replace(/^\/cloudflare\.browser\/[^/]+/, '') || '/'
 
   if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
     const [client, server] = Object.values(new WebSocketPair())
     server.accept()
 
-    const decode = createDecoder()
+    const keepAlive = Number(url.searchParams.get('keep_alive')) || DEFAULT_KEEP_ALIVE
+    const persistent = url.searchParams.get('persistent') !== 'false'
+
     const pending: string[] = []
     let upstream: WebSocket | null = null
+    let reused = false
 
-    const connect = async () => {
-      const acquireRes = await browser.fetch(`${CDP_HOST}/v1/acquire`)
-      if (!acquireRes.ok) {
-        server.close(1011, 'Acquire failed')
-        return
-      }
-      const { sessionId } = await acquireRes.json<{ sessionId: string }>()
-      const browserRes = await browser.fetch(
-        `${CDP_HOST}/v1/connectDevtools?browser_session=${sessionId}`,
-        { headers: { Upgrade: 'websocket' } },
-      )
-      upstream = browserRes.webSocket
-      if (!upstream) {
-        server.close(1011, 'Browser unavailable')
-        return
-      }
+    const connectToSession = async (sessionId: string) => {
+      const connectUrl = new URL(`${CDP_HOST}/v1/connectDevtools`)
+      connectUrl.searchParams.set('browser_session', sessionId)
+      if (persistent) connectUrl.searchParams.set('persistent', 'true')
+      const res = await browser.fetch(connectUrl.toString(), {
+        headers: { Upgrade: 'websocket' },
+      })
+      return res.webSocket ?? null
+    }
 
+    const setupUpstream = (ws: WebSocket) => {
+      upstream = ws
       upstream.accept()
 
       for (const msg of pending) {
@@ -95,6 +102,7 @@ export async function proxyCdp(
       }
       pending.length = 0
 
+      const decode = createDecoder()
       upstream.addEventListener('message', (e) => {
         try {
           if (typeof e.data === 'string') return
@@ -103,11 +111,64 @@ export async function proxyCdp(
         } catch {}
       })
 
-      upstream.addEventListener('close', () => server.close())
+      upstream.addEventListener('close', () => {
+        upstream = null
+        if (reused) {
+          reused = false
+          acquireNew().catch(() => server.close(1011, 'Session recovery failed'))
+        } else {
+          server.close()
+        }
+      })
       upstream.addEventListener('error', () => server.close())
     }
 
-    connect().catch(() => server.close(1011, 'Upstream error'))
+    const acquireNew = async () => {
+      const acquireUrl = new URL(`${CDP_HOST}/v1/acquire`)
+      acquireUrl.searchParams.set('keep_alive', `${keepAlive}`)
+      const acquireRes = await browser.fetch(acquireUrl.toString())
+      if (!acquireRes.ok) {
+        server.close(1011, 'Acquire failed')
+        return
+      }
+      const { sessionId } = await acquireRes.json<{ sessionId: string }>()
+      const ws = await connectToSession(sessionId)
+      if (!ws) {
+        server.close(1011, 'Browser unavailable')
+        return
+      }
+      setupUpstream(ws)
+    }
+
+    const connect = async () => {
+      // Try reusing an existing idle session
+      let ws: WebSocket | null = null
+      try {
+        const sessionsRes = await browser.fetch(`${CDP_HOST}/v1/sessions`)
+        if (sessionsRes.ok) {
+          const { sessions } = await sessionsRes.json<{
+            sessions: { sessionId: string; connectionId?: string }[]
+          }>()
+          const idle = sessions.filter((s) => !s.connectionId)
+          for (const s of idle) {
+            try {
+              ws = await connectToSession(s.sessionId)
+              if (ws) break
+            } catch {}
+          }
+        }
+      } catch {}
+
+      if (ws) {
+        reused = true
+        setupUpstream(ws)
+        return
+      }
+
+      await acquireNew()
+    }
+
+    connect().catch(() => server.close(1011, 'Connection failed'))
 
     server.addEventListener('message', (e) => {
       try {
@@ -116,6 +177,10 @@ export async function proxyCdp(
             ? e.data
             : textDecoder.decode(new Uint8Array(e.data as ArrayBuffer))
         if (!upstream) {
+          if (pending.length >= MAX_PENDING) {
+            server.close(1011, 'Buffer overflow')
+            return
+          }
           pending.push(data)
           return
         }
@@ -130,10 +195,12 @@ export async function proxyCdp(
   }
 
   if (path.startsWith('/json/version')) {
+    const wsUrl = new URL(proxyOrigin.replace(/^http/, 'ws') + `/cloudflare.browser/${token}`)
+    wsUrl.search = url.search
     return Response.json({
       Browser: 'Chrome/Headless',
       'Protocol-Version': '1.3',
-      webSocketDebuggerUrl: proxyOrigin.replace(/^http/, 'ws') + `/cloudflare.browser/${token}`,
+      webSocketDebuggerUrl: wsUrl.toString(),
     })
   }
 
