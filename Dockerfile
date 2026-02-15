@@ -9,7 +9,7 @@ RUN corepack enable
 WORKDIR /app
 
 ARG OPENCLAW_GIT_REF=main
-
+RUN echo "2"
 RUN git clone --depth 1 --branch "${OPENCLAW_GIT_REF}" https://github.com/openclaw/openclaw.git .
 
 RUN pnpm install --frozen-lockfile

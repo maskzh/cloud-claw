@@ -76,6 +76,16 @@ export class AgentContainer extends Container {
     }
   }
 
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+
+    if (url.pathname.startsWith('/telegram-webhook')) {
+      return this.containerFetch('http://container:8787' + url.pathname + url.search, request)
+    }
+
+    return super.fetch(request)
+  }
+
   override async onStart(): Promise<void> {
     if (this.sleepAfter !== 'never') {
       await this.watchContainer()
